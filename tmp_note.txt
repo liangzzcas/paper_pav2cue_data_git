@@ -1,0 +1,3 @@
+the fibers in 3a (are the same as fig. 2f (left) and fig.2h) which are G12_ROI39 (example in left in fig 3a) and G21ROI27 (example in right in fig 3a), and yes Fig 3a traces and heatmap are aligned to reward delivery.
+For Fig 5a is  G23 ROI 19, and fig 5c is G23 ROI36.
+For Sup Fig 2e:  The blue trace (aVS) is G12ROI51, Red trace (aDS) is G12ROI2 and the green trace (medial VS) is G12ROI19
