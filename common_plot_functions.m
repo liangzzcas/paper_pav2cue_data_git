@@ -99,12 +99,22 @@
                 pps = ["cue1","cue2"];
                 for pi = 1:length(pps)
                     ps = pps(pi);
-                
+                    if ~isfield(output,ps+"early")
+                        continue
+                    end
                     [~,tmp_early] = merge_across_mice(output,tas,CT_table,ps+"early");
                     [~,tmp_late] = merge_across_mice(output,tas,CT_table,ps+"late");
                     tmp = cat(2,tmp_early,tmp_late);
                     total_window.(ps+"el") = [min(tmp(1,:,2),[],"all","omitmissing"),max(tmp(1,:,2),[],"all","omitmissing")]-1;
-                    
+                end
+            elseif all(contains(plot_phase,"cue")) && any(contains(plot_phase,"omi"))
+                total_window = struct;
+                pps = ["cue1","cue2"];
+                for pi = 1:length(pps)
+                    ps = pps(pi);
+                    if ~isfield(output,ps+"LEDomi")
+                        continue
+                    end
                     [~,tmp_early] = merge_across_mice(output,tas,CT_table,ps+"LEDomi");
                     [~,tmp_late] = merge_across_mice(output,tas,CT_table,ps+"Toneomi");
                     tmp = cat(2,tmp_early,tmp_late);
@@ -210,7 +220,8 @@
                     tmp = xline(axs(2),input_window(2,:),'k-',Linewidth=1.8);
                     lgs(6) = tmp(1);
                 end
-            
+                xline(axs(1),[mid1,mid3],'--')
+                xline(axs(2),[mid2],'--')
                 ylabel(axs(1),"component count")
                 ylabel(axs(2),"component count")
                 legend(axs(1),lgs([2,4]),["pk1 window","pk2 window"])
@@ -233,6 +244,11 @@
             function [data_merged,data_merged_tas] = merge_across_mice(output,tas,CT_table,phase_name)
                 data_merged = [];
                 data_merged_tas = [];
+                % if ~isfield(output,phase_name)
+                %     data_merged = cat(2,data_merged,output.(phase_name).(mouse_name)(:,rois_to_plot,:));
+                %     data_merged_tas = cat(2,data_merged_tas,tas.(phase_name).(mouse_name).mu_location_value(:,rois_to_plot,:));
+                % end
+
                 mouse_names = string(fields(output.(phase_name))');
                 for mouse_name = mouse_names
                     rois_to_plot = logical(CT_table{string(CT_table{:,"mouse_name"})==mouse_name,"significance"}');
@@ -652,6 +668,7 @@
                     else
                         tmp_mdl = this_value_1(comp_i,:);
                     end
+                    
                     lme_mdl = common_plot_functions.lme_3Dgradient(tmp_mdl(in_striatum_bit),this_table(in_striatum_bit,:));
                     APMLDV_coef = double(lme_mdl.Coefficients(2:4,2));
                     common_plot_functions.plot_3Dgradient(axs_grid(comp_i),APMLDV_coef,"hor");
@@ -829,6 +846,12 @@
                                 tmp_mdl = this_value_1;
                             end
                         case "cue2_extinction"
+                            if phase_name_comp == 1
+                                tmp_mdl = -this_value_1;
+                            else
+                                tmp_mdl = this_value_1;
+                            end
+                        case "cue_extinction"
                             if phase_name_comp == 1
                                 tmp_mdl = -this_value_1;
                             else
@@ -1220,6 +1243,253 @@
                     endpoint = [0,4] + [-this_coef;this_coef]*length;
                     plot(ax,endpoint(:,1),endpoint(:,2),Color=lcolor,LineWidth=2);
                     scatter(ax,endpoint(2,1),endpoint(2,2),100,lcolor,'filled','o');
+            end
+        end
+        
+        function modality_between_context(cf,plot_tag,mouse_names,save_name,varargin)
+            % plot_tag = ["cue_vs_cue_learning","cue_vs_cue_extinction","cue_vs_rew","extinction_vs_lick"];
+            % mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
+            save_name = char(save_name);
+            tabular_sheet_name = '';
+
+            ranksum_alpha = 0.01;
+            ip = inputParser;
+            ip.addParameter("ranksum_alpha",0.01)
+            ip.addParameter("tabular_sheet_name",'')
+            ip.parse(varargin{:});
+            for j=fields(ip.Results)'
+                eval([j{1} '=ip.Results.' j{1} ';']);
+            end
+            if isempty(tabular_sheet_name)
+                tabular_sheet_name = save_name;
+            end
+            
+            ct_table = readtable([cf,'raw_data\CT_across_GXX_mice.xlsx']);
+            c_names = ["LED","Tone"];
+            comp_names = ["pk","dp","re"];
+            omi_fname = ["LEDomi","Toneomi"];
+        
+            nr=2;nc=3;
+            fig = figure(Position = [1,41,2560,1323]);
+            tiled = tiledlayout(fig,nr,nc);
+            sgtitle(tiled,plot_tag);
+            axs = gobjects(1,nr*nc); for i=1:nr*nc;axs(i)=nexttile(tiled,i);end
+            hold(axs,"on")
+            for c_i = 1:2
+                switch plot_tag
+                    case "cue_vs_cue_learning"
+                        tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump.mat']);
+                        cue_rews = ["cue1","cue2"];                    
+                        tas12 = {tas,tas};
+                        test_fieldname = ["cue"+c_i+"early","cue"+c_i+"late";...
+                            "cue2early","cue2late";];
+                        cue_rew_fix1 = ["cue1","cue2"];
+                        cue_rew_fix2 = "cue2";
+                        test_ranksum_alphas = [0.01,0.01];
+                        comp_sig_direction = {@gt,@lt,@gt;@gt,@lt,@gt;};
+                        fisher_data_comp = [1,2];
+                    case "cue_vs_cue_extinction"
+                        tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump.mat']);
+                        cue_rews = ["cue1","cue2"];
+                        tas12 = {tas,tas};
+                        test_fieldname = ["cue"+c_i+"late","cue"+c_i+omi_fname(c_i);...
+                            "cue2late","cue2Toneomi";];
+                        cue_rew_fix1 = ["cue1","cue2"];
+                        cue_rew_fix2 = "cue2";
+                        test_ranksum_alphas = [0.01,0.01];
+                        comp_sig_direction = {@lt,@gt,@gt;@lt,@gt,@gt;};
+                        fisher_data_comp = [1,2];
+                    case "cue_vs_rew"
+                        % tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump.mat']);
+                        tas = load("F:\Safa_Processed\components_GLM_highpass03_wGLM_v2\across\_components_window\tri_avg_single_filtered_rebase_rew_consump.mat");
+                        tas_rew = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump_rew_merged.mat']);
+                        cue_rews = ["cue","rew"];
+                        tas12 = {tas,tas_rew};
+                        test_fieldname = ["cue"+c_i+"early","cue"+c_i+"late";...
+                            "rew1early","rew1late";];
+                        cue_rew_fix1 = ["cue1","cue2"];
+                        cue_rew_fix2 = "rew";
+                        test_ranksum_alphas = [0.01,0.01];
+                        comp_sig_direction = {@gt,@lt,@gt;@lt,@gt,@gt;};
+                        fisher_data_comp = [1,2];
+                    case "extinction_vs_lick"
+                        tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump.mat']);
+                        tas_lick = load([cf,'processed_and_organized_data\ITI_licking_tri_avg_single_filtered.mat']);
+                        cue_rews = ["extinct","lick"];
+                        tas12 = {tas,tas_lick};
+                        test_fieldname = ["cue"+c_i+"late","cue"+c_i+omi_fname(c_i);...
+                            "early","late";];
+                        cue_rew_fix1 = ["cue1","cue2"];
+                        cue_rew_fix2 = "ITI_lick";
+                        test_ranksum_alphas = [0.01,0.025];
+                        % comp_sig_direction = {@lt,@gt,@gt;@lt,@gt,@lt;};
+                        comp_sig_direction = {@gt,@gt,@gt;@lt,@gt,@lt;};
+                        fisher_data_comp = [1,3];
+                end
+        
+                fig_cc = figure(Position = [1,41,2560,1323]);
+                tiled_cc = tiledlayout(fig_cc,nr,nc,TileSpacing="compact");
+                sgtitle(tiled_cc,plot_tag+" "+c_names(c_i));
+                axs_cc = gobjects(1,nr*nc); for i=1:nr*nc;axs_cc(i)=nexttile(tiled_cc,i);end
+                hold(axs_cc,"on")   
+        
+                late_early_data = struct;
+                late_early_data.across.(cue_rews(1)) = cell(3,1);
+                late_early_data.across.(cue_rews(2)) = cell(3,1);
+                late_early_data.across.(cue_rews(1)+"_sig") = cell(3,1);
+                late_early_data.across.(cue_rews(2)+"_sig") = cell(3,1);
+                for mouse_name = mouse_names
+                    n_rois = size(tas.cue1early.(mouse_name).mu_location_value,2);
+                    for cue_rew_i = 1:2
+                        cue_rew = cue_rews(cue_rew_i);
+                        this_tas = tas12{cue_rew_i};
+                        test_ranksum_alpha = test_ranksum_alphas(cue_rew_i);
+                        for compi=1:3
+                            value_early = this_tas.(test_fieldname(cue_rew_i,1)).(mouse_name).mu_location_value(compi,:,1);
+                            sig_early = this_tas.(test_fieldname(cue_rew_i,1)).(mouse_name).mu_location_value_significance(compi,:);
+                            single_early = num2cell(this_tas.(test_fieldname(cue_rew_i,1)).(mouse_name).single_values(compi,:,:),3);
+        
+                            value_late = this_tas.(test_fieldname(cue_rew_i,2)).(mouse_name).mu_location_value(compi,:,1);
+                            sig_late = this_tas.(test_fieldname(cue_rew_i,2)).(mouse_name).mu_location_value_significance(compi,:);
+                            single_late =  num2cell(this_tas.(test_fieldname(cue_rew_i,2)).(mouse_name).single_values(compi,:,:),3);
+                            
+                            diff_struct = diff_phase_ranksum(value_late,sig_late,single_late,value_early,sig_early,single_early,[]);
+        
+                            % get significant of differences
+                            ranksum_p = diff_struct.ranksum_p';
+                            value_late_early = diff_struct.diff_mu';
+                            
+                            late_early = value_late_early;
+                            late_early(~logical(sig_early)&~logical(sig_late)) = nan; % they are already all nan for this version of tas
+                            
+                            late_early_data.(mouse_name).(cue_rew){compi} = late_early;
+                            late_early_data.(mouse_name).(cue_rew+"_sig"){compi} = ranksum_p <= test_ranksum_alpha;
+                
+                            late_early_data.across.(cue_rew){compi} = cat(2,late_early_data.across.(cue_rew){compi},late_early);
+                            late_early_data.across.(cue_rew+"_sig"){compi} = cat(2,late_early_data.across.(cue_rew+"_sig"){compi},ranksum_p <= test_ranksum_alpha);
+                        end
+                    end
+                end
+                position_tag = "";
+                position_filter_bit = struct;
+                position_filter_bit.across = [];
+                position_filter_bit.ct_across = {};
+                for mouse_name = mouse_names
+                    tmp = ct_table{ct_table{:,"mouse_name"}==mouse_name,"significance"}==1;
+                    position_filter_bit.(mouse_name) = tmp';
+                    position_filter_bit.across = cat(2,position_filter_bit.across,tmp');
+                    position_filter_bit.ct_across = cat(1,position_filter_bit.ct_across,ct_table(ct_table.mouse_name==mouse_name&ct_table.significance==1,:));
+                end
+        
+                % plot cue_dip_change vs rew_dip_change
+                mouse_name = "across";
+                fisher_data = nan(2,2);
+                for compi=1:3
+                    cue_total = late_early_data.(mouse_name).(cue_rews(1)){compi};
+                    cue_sig_total = late_early_data.(mouse_name).(cue_rews(1)+"_sig"){compi};
+                    rew_total = late_early_data.(mouse_name).(cue_rews(2)){compi};
+                    rew_sig_total = late_early_data.(mouse_name).(cue_rews(2)+"_sig"){compi};
+                    % apply spatial filter
+                    cue_total = cue_total(logical(position_filter_bit.(mouse_name)));
+                    cue_sig_total = cue_sig_total(logical(position_filter_bit.(mouse_name)));
+                    rew_total = rew_total(logical(position_filter_bit.(mouse_name)));
+                    rew_sig_total =  rew_sig_total(logical(position_filter_bit.(mouse_name)));
+                    
+                    % plot catergorized circle plot
+                    tmp_fhandle_1 = comp_sig_direction{1,compi}; tmp_fhandle_2 = comp_sig_direction{2,compi};
+                    circle_cmap = [0.7,0.7,0.7;0,0,1;1,0,0;0,1,0;];
+                    circle_value = zeros(1,size(position_filter_bit.ct_across,1));
+        
+                    sig_combinations_total = [...
+                        cue_sig_total & tmp_fhandle_1(cue_total,0);...
+                        rew_sig_total & tmp_fhandle_2(rew_total,0);...
+                        ~cue_sig_total & ~rew_sig_total;...
+                        ];
+                    tmp = sig_combinations_total(1,:) & sig_combinations_total(2,:);
+                    sig_combinations_total_rpe = [...
+                        tmp;...
+                        sig_combinations_total(1,:) & ~tmp;...
+                        sig_combinations_total(2,:) & ~tmp;...
+                        sig_combinations_total(3,:);...
+                        ];
+        
+                    % ------------------ debug -------------------%
+                    % if c_i==1 && compi == 1
+                    %     test_v11 = sig_combinations_total(1,:)& tmp_fhandle_1(cue_total,0) & tmp_fhandle_2(rew_total,0);
+                    %     test_v12 = sig_combinations_total(3,:)& tmp_fhandle_2(rew_total,0);
+                    %     test_v13 = sig_combinations_total;
+                    %     test_v14 = rew_total;
+                    %     % keyboard
+                    % elseif c_i==2 && compi == 1
+                    %     test_v21 = sig_combinations_total(1,:)& tmp_fhandle_1(cue_total,0) & tmp_fhandle_2(rew_total,0);
+                    %     test_v22 = sig_combinations_total(3,:)& tmp_fhandle_2(rew_total,0);
+                    %     test_v23 = sig_combinations_total;
+                    %     test_v24 = rew_total;
+                    %     keyboard
+                    % end
+                    % ------------------ debug -------------------%
+        
+                    circle_value(sig_combinations_total_rpe(1,:)) = 1;
+                    circle_value(sig_combinations_total_rpe(2,:)) = 2;
+                    circle_value(sig_combinations_total_rpe(3,:)) = 3;
+                    circle_value(sig_combinations_total_rpe(4,:)) = nan;
+                    for ci=0:3
+                        tmp = circle_value==ci;
+                        if sum(tmp)==0
+                            continue;
+                        end
+                        plot_functions.scatter_3d_with_datatip(axs_cc(compi),ones(1,sum(tmp)),position_filter_bit.ct_across(tmp,:),...
+                            viewAngle=[0,90],colormapOption=circle_cmap(ci+1,:),sorting_tag="location");
+                        plot_functions.scatter_3d_with_datatip(axs_cc(compi+nc),ones(1,sum(tmp)),position_filter_bit.ct_across(tmp,:),...
+                            viewAngle=[-90,0],colormapOption=circle_cmap(ci+1,:),sorting_tag="location");
+                    end
+                    tmp = isnan(circle_value);
+                    plot_functions.scatter_3d_with_datatip(axs_cc(compi),nan(1,sum(tmp)),position_filter_bit.ct_across(tmp,:),...
+                        viewAngle=[0,90],colormapOption=circle_cmap(ci+1,:),sorting_tag="location");
+                    plot_functions.scatter_3d_with_datatip(axs_cc(compi+nc),nan(1,sum(tmp)),position_filter_bit.ct_across(tmp,:),...
+                        viewAngle=[-90,0],colormapOption=circle_cmap(ci+1,:),sorting_tag="location");
+        
+                    title(axs_cc(compi+nc),["red:"+cue_rew_fix1(c_i)+" green:"+cue_rew_fix2+" blue:both"])
+                    
+                    ax = axs(nc*(c_i-1)+compi);
+                    tmp = sum(sig_combinations_total_rpe,2)';tmp=[tmp([2,1,3]),size(sig_combinations_total_rpe,2)-sum(tmp(1:3))];
+                    if compi==fisher_data_comp(1)
+                        fisher_data(1,:) = tmp(1:2);
+                    elseif compi==fisher_data_comp(2)
+                        fisher_data(2,:) = tmp(1:2);
+                    end
+                    % histogram(ax,Categories={'cue only','cue & rew','rew only','opposite or nan'},BinCounts=tmp,Normalization="pdf")
+                    pie_prc = tmp/sum(tmp)*100;
+                    formattedLabels = strcat({[char(cue_rew_fix1(c_i)),' only'],[char(cue_rew_fix1(c_i)),' and ',char(cue_rew_fix2)],[char(cue_rew_fix2),' only'],'opposite or nan'}, " (", arrayfun(@(x,y) sprintf("%d->%0.1f",y,x),pie_prc,tmp), "%)"); 
+                    ph=bar(ax,pie_prc/100,FaceColor="flat"); ax.XTick=1:4; ax.XTickLabel=formattedLabels;
+                    ph.CData = [1,0,0;0,0,1;0,1,0;0.7,0.7,0.7;];
+                    % axis(ax,"vis3d");axis(ax,"off");
+                    ylim(ax,[0,1]);
+                    title(ax,c_names(c_i)+" "+comp_names(compi));
+        
+                end
+                [~, p] = fishertest(fisher_data);
+                title(axs(nc*(c_i-1)+2),[c_names(c_i)+" "+comp_names(2);"fishertest p = "+sprintf("%0.1e",p)+" between "+strjoin(comp_names(fisher_data_comp)," and ")]);
+        
+                hold(axs_cc,"off")
+                saveas(fig_cc,[cf,save_name,'_',char(plot_tag),'_',char(c_names(c_i)),'.png'])
+                delete(fig_cc)
+            end
+            hold(axs,"off")
+            saveas(fig,[cf,save_name,'_',char(plot_tag),'_histogram.png'])
+            delete(fig)
+
+            % helper function
+            function diff_struct = diff_phase_ranksum(mu1,sig1,single1,mu2,sig2,single2,in_striatum_bit)
+                mu1(~sig1) = nan; mu2(~sig2) = nan;
+                single1(~sig1) = cellfun(@(x) nan(size(x)),single1(~sig1),UniformOutput=false);
+                single2(~sig2) = cellfun(@(x) nan(size(x)),single2(~sig2),UniformOutput=false);
+                
+                this_value = common_functions.nan_minus(mu1,mu2);
+                this_ranksum_p = common_functions.nan_ranksum_cell(single1,single2);
+                diff_struct.included_bit = in_striatum_bit;
+                diff_struct.diff_mu = this_value';
+                diff_struct.ranksum_p = this_ranksum_p';
             end
         end
 

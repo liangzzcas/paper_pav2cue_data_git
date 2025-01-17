@@ -34,39 +34,137 @@ delete(fig)
 %vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
 
 
-%% figure 4D
-close all;clear;clc;
-cf = [pwd,'\'];
-common_plot_functions.component_time_histogram(cf,["cue1LEDomi","cue1Toneomi"],'fig4D');
-
-
-%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
-%--------------------------------------------------------------------------%
-%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
-
-
-%% figure 4E
-close all;clear;clc;
-cf = [pwd,'\'];
-common_plot_functions.component_presence_circle(cf,"pav2cue task",["cue1LEDomi"],'fig4E');
-
-
-%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
-%--------------------------------------------------------------------------%
-%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
-
-
-%% figure 4F-I
+%% figure 4C
 close all;clear;clc;
 cf = [pwd,'\'];
 cwa = load([cf,'processed_and_organized_data\components_window_activity_filtered_rebase_rew_consump.mat']);
 cwa_all_days = load([cf,'processed_and_organized_data\event_aligned_highpass03.mat']).cwa_raw;
 cwa_all_days_fields = ["cueOn","cue1","activity"];
 session_info = common_functions.get_training_info();
-plot_info_1 = {"G23",36,18;"G23",48,18;"G21",41,18;"G21",9,18;};
-plot_imagesc_clim = {0.05;0.03;0.03;0.025;};
+plot_info_1 = {"G23",1,18;};
 plot_info_2 = ["cue1late","cue1LEDomi","cue1Toneomi"];
 plot_info_3 = {11:15,16:20;11:15,16:20;16:20,11:15;16:20,11:15;};
+
+vel_smooth_info = {"lowess",1/2};
+
+fig = figure(Position=[100,100,1600,900]);
+nr=3;
+tiled = tiledlayout(fig,nr,size(plot_info_1,1),TileSpacing="tight");
+axes=gobjects(1,nr*size(plot_info_1,1));
+for i=1:nr*size(plot_info_1)
+    axes(i) = nexttile(tiled,i);
+end
+hold(axes,"on");
+for pi=1:size(plot_info_1,1)
+    if pi == 2 || pi == 4
+        acc_flag = true;
+    else
+        acc_flag = false;
+    end
+
+    this_axes = axes([pi,pi+size(plot_info_1,1),pi+2*size(plot_info_1,1)]);
+    this_info = plot_info_1(pi,:);
+    sr = this_info{3};
+    plot_x = (1:sr*4)/sr-1;
+    tmp = cwa.(plot_info_2(1)).(this_info{1}).activity(:,this_info{2},:); nt1 = size(tmp,3);
+    if acc_flag
+        vel_smoothed = smoothdata(squeeze(tmp),1,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        decel = diff(vel_smoothed,1,2)*sr; decel = cat(2,decel,decel(:,end));
+        tmp(:,1,:) = smoothdata(decel,2,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        this_clim = [-2.5,2.5];
+        xlcolor = [0,0,0];
+    else
+        tmp = tmp/max(tmp,[],"all","omitmissing");
+        this_clim = [0,1];
+        xlcolor = [1,1,1];
+    end
+    imagesc(this_axes(1),plot_x,1:nt1,permute(tmp,[3,1,2]),this_clim);
+    this_axes(1).YDir = "reverse";
+    if acc_flag
+        colormap(this_axes(1),common_functions.redblue());
+    end
+    colorbar(this_axes(1));
+
+    % get all days for omission
+    tmp = arrayfun(@(x) getfield(cwa_all_days.(this_info{1}).(x),cwa_all_days_fields{:}),"file"+plot_info_3{pi,1}, UniformOutput=false);
+    tmp = cell2mat(reshape(tmp,1,1,[])); tmp = tmp(:,this_info{2},:);
+    if acc_flag
+        vel_smoothed = smoothdata(squeeze(tmp),1,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        decel = diff(vel_smoothed,1,2)*sr; decel = cat(2,decel,decel(:,end));
+        tmp(:,1,:)  = smoothdata(decel,2,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        this_clim = [-2.5,2.5];
+        xlcolor = [0,0,0];
+    else
+        tmp = tmp/max(tmp,[],"all","omitmissing");
+        this_clim = [0,1];
+        xlcolor = [1,1,1];
+    end
+    nt2 = size(tmp,3);
+    imagesc(this_axes(2),plot_x,1:nt2,permute(tmp,[3,1,2]),this_clim);
+    this_axes(2).YDir = "reverse";
+    if acc_flag
+        colormap(this_axes(2),common_functions.redblue());
+    end
+    colorbar(this_axes(2));
+    
+
+
+
+    % get all days for omission
+    tmp = arrayfun(@(x) getfield(cwa_all_days.(this_info{1}).(x),cwa_all_days_fields{:}),"file"+plot_info_3{pi,2}, UniformOutput=false);
+    tmp = cell2mat(reshape(tmp,1,1,[])); tmp = tmp(:,this_info{2},:);
+    if acc_flag
+        vel_smoothed = smoothdata(squeeze(tmp),1,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        decel = diff(vel_smoothed,1,2)*sr; decel = cat(2,decel,decel(:,end));
+        tmp(:,1,:) = smoothdata(decel,2,vel_smooth_info{1},round(vel_smooth_info{2}*sr))';
+        this_clim = [-2.5,2.5];
+        xlcolor = [0,0,0];
+    else
+        tmp = tmp/max(tmp,[],"all","omitmissing");
+        this_clim = [0,1];
+        xlcolor = [1,1,1];
+    end
+    nt3 = size(tmp,3);
+    imagesc(this_axes(3),plot_x,1:nt3,permute(tmp,[3,1,2]),this_clim);
+    this_axes(3).YDir = "reverse";
+    if acc_flag
+        colormap(this_axes(3),common_functions.redblue());
+    end
+    colorbar(this_axes(3));
+
+    for ax=this_axes
+        xline(ax,0,'-',Color=xlcolor);
+        xlim(ax,plot_x([1,end]));
+    end
+    ylim(this_axes(1),[1,nt1]);
+    ylim(this_axes(2),[1,nt2]);
+    ylim(this_axes(3),[1,nt3]);
+    for i=1:3
+        ylabel(this_axes(i),plot_info_2(i));
+    end
+end
+hold(axes,"off");
+saveas(fig,'fig4C.png');
+delete(fig)
+
+
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% figure 4EG
+close all;clear;clc;
+cf = [pwd,'\'];
+cwa = load([cf,'processed_and_organized_data\components_window_activity_filtered_rebase_rew_consump.mat']);
+cwa_all_days = load([cf,'processed_and_organized_data\event_aligned_highpass03.mat']).cwa_raw;
+cwa_all_days_fields = ["cueOn","cue1","activity"];
+session_info = common_functions.get_training_info();
+% plot_info_1 = {"G23",48,18;"G23",36,18;"G21",41,18;"G21",9,18;};
+plot_info_1 = {"G23",48,18;"G23",36,18;};
+plot_imagesc_clim = {0.03;0.05;};
+plot_info_2 = ["cue1late","cue1LEDomi","cue1Toneomi"];
+plot_info_3 = {11:15,16:20;11:15,16:20;};
 plot_colors = lines(3);
 
 fig = figure(Position=[100,100,1600,900]);
@@ -134,7 +232,7 @@ for pi=1:size(plot_info_1,1)
     ylim(this_axes(4),[1,nt3]);
 end
 hold(axes,"off");
-saveas(fig,'fig4F_I.png');
+saveas(fig,'fig4EG.png');
 delete(fig)
 
 
@@ -143,11 +241,11 @@ delete(fig)
 %vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
 
 
-%% figure 4J
+%% figure 4FH
 close all;clear;clc;
 cf = [pwd,'\'];
 mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
-common_plot_functions.phase_diff_circlemap(cf,"tas_normal",{["cue1LEDomi","cue1late"]},mouse_names,'fig4J',cmap_limit={[-1,1]*0.011,[-1,1]*0.012,[-1,1]*0.011});
+common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue1LEDomi","cue1late"]},mouse_names,'fig4FH',tabular_sheet_name="fig4FH");
 
 
 %^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
@@ -155,7 +253,41 @@ common_plot_functions.phase_diff_circlemap(cf,"tas_normal",{["cue1LEDomi","cue1l
 %vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
 
 
-%% figure 4K-L
+%% figure 4K
+close all;clear;clc;
+cf = [pwd,'\'];
+mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
+common_plot_functions.gradient_test(cf,"tas_normal", {{"cue1LEDomi_cue1late",1,2;"cue1LEDomi_cue1late",3,1;},{"cue2Toneomi_cue2late",1,2;"cue2Toneomi_cue2late",3,1;},},mouse_names,...
+    {{"cue1_pk1";"cue2_pk1";},{"cue1_pk2";"cue2_pk2";},},"cue_extinction",'fig4K');
+
+
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% figure 4L
+close all;clear;clc;
+cf = [pwd,'\'];
+mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
+common_plot_functions.gradient_test(cf,"tas_normal", {{"cue1LEDomi_cue1late",1,2;"cue2Toneomi_cue2late",1,2;},{"cue1LEDomi_cue1late",2,1;"cue2Toneomi_cue2late",2,1;},{"cue1LEDomi_cue1late",3,1;"cue2Toneomi_cue2late",3,1;},},mouse_names,...
+   {{"cue1_pk";"cue1_dip";"cue1_re";},{"cue2_pk";"cue2_dip";"cue2_re"},},"cue_extinction",'fig4L');
+
+
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% figure 4M
+
+
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% figure 4MNOP
 close all;clear;clc;
 cf = [pwd,'\'];
 
@@ -475,10 +607,10 @@ for ci = 1:2
         % plot smoothed trace only
         if ci==1 && this_m=="G23"
             plot_rois = 36;
-            save_tag = {'fig4K','fig4L'};
+            save_tag = {'fig4M_LED','fig4N_LED'};
         elseif ci==2 && this_m=="G12"
             plot_rois = 5;
-            save_tag = {'sup_fig6E','sup_fig6F'};
+            save_tag = {'fig4O_Tone','fig4P_Tone'};
         else
             continue
         end
@@ -548,115 +680,6 @@ end
 %^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
 %--------------------------------------------------------------------------%
 %vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
-
-
-%% figure 4M
-close all;clear;clc;
-cf = [pwd,'\'];
-cwa_data = load([cf,'processed_and_organized_data\components_window_activity_filtered_rebase_rew_consump.mat']);
-include_days = common_functions.get_include_days();
-main_srs = common_functions.get_main_samplerate();
-vel_window = [0,0.6]; % velocity window of getting acceleration etc
-vel_smooth_info = {"sgolay",1/4};
-mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
-cue_names = ["LED","Tone"];
-
-% build acceleration data
-vel_struct = struct;
-test_data = struct;
-for c_i = 1:2
-    cue_text = "cue"+c_i;
-    phase_names = [cue_text+"late",cue_text+cue_names(c_i)+"omi",cue_text+cue_names(3-c_i)+"omi"];
-    test_data.(cue_text) = nan(length(phase_names),8,2);
-    for m_i = 1:8
-        mouse_name = mouse_names(m_i);
-        this_sr = main_srs(mouse_name);
-        vel_window_frame = (vel_window+1)*this_sr;
-        vel_window_frame = floor(vel_window_frame(1)):ceil(vel_window_frame(2));
-        for p_i = 1:length(phase_names)
-            vel = cwa_data.(phase_names(p_i)).(mouse_name).mu(:,2);
-            vel_smoothed = smoothdata(vel,1,vel_smooth_info{1},round(vel_smooth_info{2}*this_sr));
-
-            vel_info = common_functions.find_acc_start_end(vel_smoothed,vel_window_frame,this_sr);
-            vel_struct.(cue_text).(mouse_name).(phase_names(p_i)).vel_original = vel;
-            vel_struct.(cue_text).(mouse_name).(phase_names(p_i)).vel_smoothed = vel_smoothed;
-            vel_struct.(cue_text).(mouse_name).(phase_names(p_i)).vel_info = vel_info;
-
-            test_data.(cue_text)(p_i,m_i,:) = [-vel_info(1,4),vel_info(1,5)-vel_info(1,7)];
-        end
-    end
-end
-
-% test late vs omission group by mouse
-testf = @kruskalwallis;
-test_name = "kruskalwallis";
-t_tags = ["decel","diff_v"];
-t_texts = ["deceleration","change in velocity"];
-test_result = struct;
-
-% plot cue1
-fig_test = figure(position=[100,100,1600,900]);
-tiled_test = tiledlayout(fig_test,2,2);
-axs = gobjects(1,4);
-for ax_i = 1:4
-    axs(ax_i) = nexttile(tiled_test,ax_i);
-end
-hold(axs,"on")
-for c_i = 1
-    cue_text = "cue"+c_i;
-    phase_names = [cue_text+"late",cue_text+cue_names(c_i)+"omi",cue_text+cue_names(3-c_i)+"omi",];
-    paired_x = repmat((1:length(phase_names))',1,8);
-    for t_i = 1:2 % loop across decel vs diff_vel
-        this_test_data = test_data.(cue_text)(:,:,t_i)';
-        [p,tbl,stats] = testf(this_test_data,[],"off");
-        c = multcompare(stats,display="off");
-        multi_p = c(:,6)';
-        asters = common_functions.p_to_asterisk(multi_p);
-        test_result.(t_tags(t_i)) = tbl;
-        this_test_data_tag = categorical([repmat(phase_names(1),8,1);repmat(phase_names(2),8,1);repmat(phase_names(3),8,1)],phase_names);
-        boxchart(axs(2*c_i-2+t_i),this_test_data_tag,reshape(this_test_data,[],1),MarkerStyle='o');
-        plot(axs(2*c_i-2+t_i),paired_x,this_test_data','ko-');
-        common_functions.add_significance_to_ax(axs(2*c_i-2+t_i),{[1.1,1.9],[2.1,2.9],[1.1,2.9]},[1,1,1.05],asters([1,3,2]));
-        % common_functions.add_significance_to_ax(axs(2*c_i-2+t_i),{[1.1,1.9],[2.1,2.9],[1.1,2.9]},[1,1,1.05],string(multi_p([1,3,2])))
-        title(axs(2*c_i-2+t_i),strjoin([cue_text,t_texts(t_i)]," ")+" "+test_name+"="+p);
-    end
-end
-hold(axs,"off")
-saveas(fig_test,[cf,'fig4M.png'])
-delete(fig_test)
-
-% plot cue2
-fig_test = figure(position=[100,100,1600,900]);
-tiled_test = tiledlayout(fig_test,2,2);
-axs = gobjects(1,4);
-for ax_i = 1:4
-    axs(ax_i) = nexttile(tiled_test,ax_i);
-end
-hold(axs,"on")
-for c_i = 2
-    cue_text = "cue"+c_i;
-    phase_names = [cue_text+"late",cue_text+cue_names(c_i)+"omi",cue_text+cue_names(3-c_i)+"omi",];
-    paired_x = repmat((1:length(phase_names))',1,8);
-    for t_i = 1:2 % loop across decel vs diff_vel
-        this_test_data = test_data.(cue_text)(:,:,t_i)';
-        [p,tbl,stats] = testf(this_test_data,[],"off");
-        c = multcompare(stats,display="off");
-        multi_p = c(:,6)';
-        asters = common_functions.p_to_asterisk(multi_p);
-        test_result.(t_tags(t_i)) = tbl;
-        this_test_data_tag = categorical([repmat(phase_names(1),8,1);repmat(phase_names(2),8,1);repmat(phase_names(3),8,1)],phase_names);
-        boxchart(axs(2*c_i-2+t_i),this_test_data_tag,reshape(this_test_data,[],1),MarkerStyle='o');
-        plot(axs(2*c_i-2+t_i),paired_x,this_test_data','ko-');
-        common_functions.add_significance_to_ax(axs(2*c_i-2+t_i),{[1.1,1.9],[2.1,2.9],[1.1,2.9]},[1,1,1.05],asters([1,3,2]));
-        % common_functions.add_significance_to_ax(axs(2*c_i-2+t_i),{[1.1,1.9],[2.1,2.9],[1.1,2.9]},[1,1,1.05],string(multi_p([1,3,2])))
-        title(axs(2*c_i-2+t_i),strjoin([cue_text,t_texts(t_i)]," ")+" "+test_name+"="+p);
-    end
-end
-hold(axs,"off")
-saveas(fig_test,[cf,'sup_fig6G.png'])
-delete(fig_test)
-
-
 
 
 %% functions
