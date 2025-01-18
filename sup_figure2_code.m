@@ -2,7 +2,7 @@
 close all;clear;clc;
 cf = [pwd,'\'];
 mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
-common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue1late","cue1early"]},mouse_names,'sup_fig2B',tabular_sheet_name="fig2A");
+common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue1late","cue1early"]},mouse_names,'sup_fig2B',tabular_sheet_name="sup_fig2A");
 
 
 %^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
@@ -14,7 +14,7 @@ common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue1late","cue1ear
 close all;clear;clc;
 cf = [pwd,'\'];
 mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
-common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue2late","cue2early"]},mouse_names,'sup_fig2D',tabular_sheet_name="fig2C");
+common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue2late","cue2early"]},mouse_names,'sup_fig2D',tabular_sheet_name="sup_fig2C");
 
 
 %^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
@@ -101,7 +101,7 @@ delete(fig)
 close all;clear;clc;
 cf = [pwd,'\'];
 mouse_names = ["G25","G26","G27"];
-common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue2late","cue2early"]},mouse_names,'sup_fig2J_smoothed',tabular_sheet_name="fig2J");
+common_plot_functions.smoothed_spatial_map(cf,"tas_normal",{["cue2late","cue2early"]},mouse_names,'sup_fig2J_smoothed',tabular_sheet_name="sup_fig2J",excel_only=true);
 common_plot_functions.phase_diff_circlemap(cf,"tas_normal",{["cue1late","cue1early"]},mouse_names,'sup_fig2J',cmap_limit={[-1,1]*0.018,[-1,1]*0.017,[-1,1]*0.014});
 
 

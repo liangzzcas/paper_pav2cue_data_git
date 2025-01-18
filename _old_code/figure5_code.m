@@ -71,7 +71,7 @@ delete(fig)
 %vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
 
 
-%% figure 5B
+%% figure 5D
 close all;clear;clc;
 cf = [pwd,'\'];
 

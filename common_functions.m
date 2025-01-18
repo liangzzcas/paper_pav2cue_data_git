@@ -1033,6 +1033,121 @@ classdef common_functions
             out = in1 - in2;
         end
         
+        function events = get_wheel_acc_events(wheel_vel,varargin)
+            % parse optional inputs
+            ip = inputParser;
+            ip.addParameter('smooth_window', 0.3); % in seconds
+            ip.addParameter('lowpass_freq', 1.5) % lowpass frequency
+            ip.addParameter('sampling_freq', 18) % sampling rate
+            ip.addParameter('vel_thresh', 0.1) % 0.1 velocity threshold (determined empirically, 0 for NA)
+            ip.addParameter('delta_vel_thresh', 0.05)
+            ip.addParameter('acc_thresh', 0.27) % 0.015 acceleration threshold (determined empirically, 0 for NA)
+            ip.addParameter('excl', []) % excluded timepoints (binary or idx)
+            ip.addParameter('vel_window', 0.5) % velocity window to consider (s)
+            
+            ip.parse(varargin{:});
+            for j=fields(ip.Results)'
+                eval([j{1} '=ip.Results.' j{1} ';']);
+            end
+            events = struct;
+            % excl
+            if ~isempty(excl)
+                % if binary, change to idx
+                if sum(double(logical(excl))-excl)==0 
+                    excl = find(excl==1);
+                end
+            end
+            vel_window = round(vel_window*sampling_freq);
+            
+            % smooth
+            sm_vel = smooth(lowpass(wheel_vel,lowpass_freq,sampling_freq),smooth_window*sampling_freq);
+            sm_acc = diff(sm_vel) * sampling_freq; % acceleration = diff(v)./diff(t);
+            sm_acc = [smooth(lowpass(sm_acc,lowpass_freq,sampling_freq),smooth_window*sampling_freq)];
+            sm_acc = [sm_acc(1);sm_acc];
+            
+            
+            % find local min and max
+            % require vel_window=0.5s after to be all one direction
+            
+            %%% acc
+            ev_acc = find(islocalmax(sm_acc) & sm_acc > 0);
+            ev_acc = ev_acc(~ismember(ev_acc,excl));
+            events.acc_events_all = ev_acc;
+            if ~isempty(ev_acc)
+                acc_ta = eventTriggeredAverage(sm_vel,ev_acc,-vel_window,vel_window,'nullDistr',0);
+                acc_ta = squeeze(acc_ta.activity);
+                acc_mag = sm_acc(ev_acc);
+                vel_before = mean(acc_ta(1:vel_window,:))';
+                vel_after = mean(acc_ta(end-vel_window+1:end,:))';
+                keep_these = ones(size(vel_before));
+                if vel_thresh > 0
+                    keep_these(vel_after <= vel_thresh) = 0;
+                    keep_these(vel_after <= sm_vel(ev_acc) + delta_vel_thresh) = 0;
+                end
+                if acc_thresh > 0
+                    keep_these(acc_mag <= acc_thresh) = 0;
+                end
+                
+                % tmp assign
+                tmp.acc_events = ev_acc(keep_these==1);
+                tmp.acc_mag = acc_mag(keep_these==1);
+                tmp.acc_vel_before = vel_before(keep_these==1);
+                tmp.acc_vel_after = vel_after(keep_these==1);
+            else
+                % tmp assign
+                tmp.acc_events = [];
+                tmp.acc_mag = [];
+                tmp.acc_vel_before = [];
+                tmp.acc_vel_after = [];
+            end
+            
+            
+            %%% dec
+            ev_acc = find(islocalmin(sm_acc) & sm_acc < 0);
+            ev_acc = ev_acc(~ismember(ev_acc,excl));
+            events.dec_events_all = ev_acc;
+            if ~isempty(ev_acc)
+                acc_ta = eventTriggeredAverage(sm_vel,ev_acc,-vel_window,vel_window,'nullDistr',0);
+                acc_ta = squeeze(acc_ta.activity);
+                acc_mag = sm_acc(ev_acc);
+                vel_before = mean(acc_ta(1:vel_window,:))';
+                vel_after = mean(acc_ta(end-vel_window+1:end,:))';
+                keep_these = ones(size(vel_before));
+                if vel_thresh > 0
+                    keep_these(vel_before <= vel_thresh) = 0;
+                    keep_these(vel_before <= sm_vel(ev_acc) + delta_vel_thresh) = 0;
+                end
+                if acc_thresh > 0
+                    keep_these(abs(acc_mag) <= acc_thresh) = 0;
+                end
+                
+                % tmp assign
+                tmp.dec_events = ev_acc(keep_these==1);
+                tmp.dec_mag = acc_mag(keep_these==1);
+                tmp.dec_vel_before = vel_before(keep_these==1);
+                tmp.dec_vel_after = vel_after(keep_these==1);
+            else
+                % tmp assign
+                tmp.dec_events = [];
+                tmp.dec_mag = [];
+                tmp.dec_vel_before = [];
+                tmp.dec_vel_after = [];
+            end
+            % output
+            events.vel_original = wheel_vel;
+            events.vel = sm_vel;
+            events.acc = sm_acc;
+            events.excl = excl;
+            output_fields = {'events','mag','vel_before','vel_after'};
+            acc_dirs = {'acc','dec'};
+            for a1 = 1:numel(acc_dirs)
+                for f = 1:numel(output_fields)
+                    events.([acc_dirs{a1} '_' output_fields{f}]) = ...
+                        tmp.([acc_dirs{a1} '_' output_fields{f}]);
+                end
+            end
+        end
+
         function [output,output_validate] = find_acc_start_end(vel,window,sr,varargin)
             % "time_start","time_acc_peak","time_end","acc_peak_value","vel_start","vel_peak","vel_end","vel_mean"
             delta_vel_threshold = 0.08;
@@ -1138,6 +1253,98 @@ classdef common_functions
 
         end
         
+        function output = find_acc_start_end_tbl(vel,window,sr)
+            % Given a velocity trace([-1,3], has to start with -1), a frame window and SR. Find some velocity related fields.
+            % Note vel is a n_frame*n_trial matrix.
+            % "time_start","time_acc_peak","time_end","acc_peak_value","vel_start","vel_peak","vel_end","vel_mean"
+            delta_vel_threshold = 0.08;
+            n_trials = size(vel,2);
+            output = nan(n_trials,8);
+            % find end first then go back and find peak
+            [end_value,end_frame] = min(vel(window,:),[],1); end_frame = end_frame + window(1) - 1;
+            for i = 1:n_trials
+                if end_frame(i) <= sr
+                    warning("End of decel is at 0s, skipped. Set deceleration as 0.")
+                    continue
+                end
+                this_end_frame = end_frame(i);
+                this_vel = vel(:,i);
+                [start_value,start_frame] = max(this_vel(sr:this_end_frame-1)); start_frame = start_frame + sr - 1;
+                if (start_value - end_value(i)) < delta_vel_threshold
+                    warning("Diff vel too small.")
+                    output(i,[1,3,4,5,7,8]) = [start_frame/sr,this_end_frame/sr,0,start_value,end_value(i),mean(this_vel(start_frame:this_end_frame))];
+                    continue
+                end
+
+                % get acc
+                acc = diff(this_vel)*sr; acc = [acc(1);acc];
+                target_acc = acc(start_frame:this_end_frame);
+                try
+                [~, negative_parts] = separate_positive_negative(target_acc); negative_parts = negative_parts + start_frame - 1;
+                catch err
+                    keyboard
+                end
+                n_decel = size(negative_parts,1);
+                delta_vel = nan(1,n_decel);
+                for j = 1:n_decel
+                    delta_vel(j) = sum(acc(negative_parts(j,1):negative_parts(j,2)))/sr;
+                end
+                [delta_vel_value, delta_vel_I] = min(delta_vel);
+                if abs(delta_vel_value) < delta_vel_threshold
+                    % warning("Probably no continouse acceleration. Set deceleration as 0.")
+                    acc_value = 0; acc_frame = nan;vel_pk = nan;
+                else
+                    this_vel_id = negative_parts(delta_vel_I,:);
+                    [acc_value,acc_frame] = min(acc(this_vel_id(1):this_vel_id(2))); acc_frame = acc_frame + this_vel_id(1) - 1;
+                    vel_pk = this_vel(acc_frame);
+                end    
+                output(i,:) = [start_frame/sr,acc_frame/sr,this_end_frame/sr,acc_value,start_value,vel_pk,end_value(i),mean(this_vel(start_frame:this_end_frame))];
+            end
+            output = array2table(output,VariableNames=["time_start","time_acc_peak","time_end","acc_peak_value","vel_start","vel_peak","vel_end","vel_mean"]);
+
+            function [positive_parts, negative_parts] = separate_positive_negative(array)
+                array = reshape(array,1,[]);
+                % Check if the array is empty or has only one element
+                if isempty(array) || numel(array) == 1
+                    return;
+                end
+            
+                % Find the indices where the sign of the elements change
+                sign_changes = diff(sign(array));
+            
+                % Find the indices where the positive parts start and end
+                positive_starts = find(sign_changes > 0) + 1;
+                positive_ends = find(sign_changes < 0);
+            
+                % Find the indices where the negative parts start and end
+                negative_starts = find(sign_changes < 0) + 1;
+                negative_ends = find(sign_changes > 0);
+            
+                % If the array starts with a positive part, add the first positive part
+                if sign(array(1)) == 1
+                    positive_starts = [1, positive_starts];
+                end
+            
+                % If the array ends with a positive part, add the last positive part
+                if sign(array(end)) == 1
+                    positive_ends = [positive_ends, numel(array)];
+                end
+            
+                % If the array starts with a negative part, add the first negative part
+                if sign(array(1)) == -1
+                    negative_starts = [1, negative_starts];
+                end
+            
+                % If the array ends with a negative part, add the last negative part
+                if sign(array(end)) == -1
+                    negative_ends = [negative_ends, numel(array)];
+                end
+            
+                positive_parts = [positive_starts;positive_ends]';
+                negative_parts = [negative_starts;negative_ends]';
+            end
+        end
+
         function include_mask = get_aDMS_fiber(this_CT)
             include_mask = this_CT{:,"fiber_bottom_AP"}>0 & this_CT{:,"fiber_bottom_ML"}<2 & this_CT{:,"fiber_bottom_DV"}<4;
         end

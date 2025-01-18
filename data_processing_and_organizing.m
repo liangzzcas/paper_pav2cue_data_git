@@ -458,7 +458,7 @@ close all;clear;clc;
 cf = [pwd,'\'];
 lick_data = load([cf,'ITI_licking_aligned_highpass03.mat']);
 CT = readtable([cf,'raw_data\CT_across_GXX_mice.xlsx']);
-include_days = common_functions.get_include_day_ids(); % use version=3 here to get all pav days merged (named as late)
+include_days = common_functions.get_include_days(); % use version=3 here to get all pav days merged (named as late)
 null_window_s = 0.7;
 ITI_licking_comp_window = common_functions.get_ITI_licking_comp_timewindow();
 null_std_factor = 3;
@@ -734,7 +734,7 @@ for mouse_name = mouse_names_ori
         for i = 1:length(this_days)
             di = this_days(i);
             ROIBehav = ROI_loader_DA([cf,'raw_data/',char(mouse_name),'/'],di);
-            ROI470 = ROIBehav.roi; behav7 = ROIBehav.behavior; this_sr = behav_functions.get_sr(behav7);
+            ROI470 = ROIBehav.roi; behav7 = ROIBehav.behavior; this_sr = common_functions.get_sr(behav7);
             % maybe filter ROI 470
             ROI470_filtered = frequency_pass(ROI470,fc_loading_fft_1,this_sr);
 
@@ -878,6 +878,105 @@ save([cf,'processed_and_organized_data\Glu_task_ta_table.mat'],'-struct','output
 save([cf,'processed_and_organized_data\Glu_task_ta.mat'],'-struct','cwa','-v7.3');
 
 
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% ITI deceleration signal data
+close all;clear;clc;
+cf = [pwd,'\'];
+raw_path = [cf,'raw_data\'];
+CT = readtable([raw_path,'CT_across_GXX_mice.xlsx']);
+
+mouse_names = ["G17","G19","G22","G21","G23","G24"];
+mouse_phases = ["all"];
+include_days = common_functions.get_include_days();
+
+n_trial = [86,10,35,103,140,29];
+n_iter = 2000;
+bstrp_alpha = 0.025;
+
+% get result by phase
+fr = 18;
+results = struct; % struct to store my results
+results.roi_idx = [-fr:fr];
+results.acc_idx = [-fr*2:fr*2];
+
+results_bstrp = struct; % struct to store my results
+results_bstrp.n_iter = n_iter;
+results_bstrp.bstrp_alpha = bstrp_alpha;
+
+Fc_Fourier_filter = [0.3,nan];
+for mouse_name = mouse_names
+    mouse_path = [raw_path,char(mouse_name),'\'];
+    tmp = dir(mouse_path);
+    tmp = string({tmp.name});
+    dates = tmp(arrayfun(@(x) any(regexp(x,'^\d{6}$')),tmp)); clear("tmp");
+
+    for mouse_phase_i = 1:length(mouse_phases)
+        mouse_phase = mouse_phases(mouse_phase_i);
+        name_phase = mouse_name+mouse_phase;
+        include_day = include_days.(name_phase);
+        
+        combined_accel = [];
+        combined_decel = [];
+        combined_fc = [];
+        for f = 1:length(include_day)
+            [~,roi,~,behav] = ROI_loader([mouse_path,char(dates(include_day(f))),'\'],Fourier = Fc_Fourier_filter);
+            sr = common_functions.get_sr(behav);
+            vel_out = common_functions.ball2xy(behav);
+            velo = struct;
+            velo.linear_velocity = vel_out.linear_velocity;
+            velo.angular_velocity = vel_out.angular_velocity_ms;
+            velo.total_velo = sqrt(vel_out.linear_velocity.^2 + vel_out.angular_velocity_ms.^2);
+            mov_event_tmp = common_functions.get_wheel_acc_events(velo.total_velo);
+            ITI_bit = get_ITI_pav(behav,remove_reward=[-1,4],remove_cue=[-1,3],remove_lick=[-0.5,0.5]);
+            % instead of padding, just remove frames that are within 2 second near beginning and ending
+            ITI_bit([1:2*sr,end-2*sr+1:end]) = 0;
+            ITI_bit = logical(ITI_bit);
+
+            mov_event = struct;
+            mov_event.sr = sr;
+            mov_event.vel = [];
+            mov_event.vel_smoothed = mov_event_tmp.vel;
+            mov_event.acc = [];
+            mov_event.acc_smoothed = mov_event_tmp.acc;
+            mov_event.accel_all = mov_event_tmp.acc_events_all;
+            mov_event.accel = mov_event_tmp.acc_events(logical((ITI_bit(mov_event_tmp.acc_events))));
+            if isempty(mov_event.accel)
+                mov_event.accel = double.empty(0,1);
+            end
+            mov_event.decel_all = mov_event_tmp.dec_events_all;
+            mov_event.decel = mov_event_tmp.dec_events(logical((ITI_bit(mov_event_tmp.dec_events))));
+            if isempty(mov_event.decel)
+                mov_event.decel = double.empty(0,1);
+            end
+
+            result = mov_event;
+            vel_fc = cat(2,mov_event.acc_smoothed,mov_event.vel_smoothed,roi.Fc);
+            result.ta_accel = eventTriggeredAverage(vel_fc,mov_event.accel(:,1),-sr,sr);
+            result.ta_decel = eventTriggeredAverage(vel_fc,mov_event.decel(:,1),-sr,sr);
+            results.(mouse_name).(mouse_phase).("s"+f) = result;
+            combined_accel = cat(3,combined_accel,result.ta_accel.activity);
+            combined_decel = cat(3,combined_decel,result.ta_decel.activity);
+            combined_fc = cat(1,combined_fc,roi.Fc(ITI_bit,:));
+        end
+        results.(mouse_name).(mouse_phase).combined_accel = combined_accel;
+        results.(mouse_name).(mouse_phase).combined_decel = combined_decel;
+
+        % excluding frames that are within 2 second near beginning and ending, same as when building data
+        n_frame = size(combined_fc,1);
+        bstrp_frame = randi(n_frame-4*sr,[1,n_iter*n_trial(mi)])+2*sr;
+        bstrp_act = eventTriggeredAverage(combined_fc,bstrp_frame,-sr,sr).activity;
+        bstrp_act = reshape(bstrp_act,size(bstrp_act,1),size(bstrp_act,2),n_iter,n_trial(mi));
+        bstrp_threshold = prctile(mean(bstrp_act,4,"omitmissing"),[bstrp_alpha,1-bstrp_alpha]*100,3);
+
+        results_bstrp.(mouse_name).(mouse_phase).bstrp = bstrp_threshold;
+    end % loop thru mouse_phases
+end % loop thru mouse_names
+save([cf,'processed_and_organized_data\decel_signal_iti_highpass03.mat'],'-struct','results');
+save([cf,'processed_and_organized_data\decel_signal_iti_btsrp_highpass03.mat'],'-struct','results_bstrp','-mat');
 
 
 
