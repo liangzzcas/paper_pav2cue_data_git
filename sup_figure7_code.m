@@ -473,6 +473,179 @@ delete(fig)
 
 
 %% sup figure 7F
+% close all;clear;clc;
+% cf = [pwd,'\'];
+% mouse_names = ["G17","G19","G21","G22","G23","G24"];
+% [this_value_1,this_ranksum_p_1] = common_plot_functions.phase_diff_data(cf,"tas_normal",{["cue1late","cue1early"]},mouse_names);
+% decel = load("F:\Safa_Processed\#paper_figure\movement_analysis_Oct2024\decel_min_max_highpass03.mat").circle_value;
+% decel(isnan(decel)) = 0;
+% 
+% fig = figure;
+% ax =axes(fig);
+% hold(ax,"on");
+% task_signal = this_value_1(2,this_ranksum_p_1(2,:)<0.01)';
+% decel_signal = decel(this_ranksum_p_1(2,:)<0.01,1);
+% histogram(ax,decel_signal,BinEdges=[-0.014:0.001:0],FaceColor=[0 0 0],Normalization="count");
+% histogram(ax,task_signal,BinEdges=[-0.014:0.001:0],FaceColor=[1 0 0],FaceAlpha=0.5,Normalization="count");
+% 
+% hold(ax,"off");
+% xline(mean(task_signal),'r');
+% xline(mean(decel_signal),'k');
+% ylim(ax,[0,90]);
+% [p,h,stats] = ranksum(task_signal,decel_signal);
+
+
+close all;clear;clc;
+cf = [pwd,'\'];
+fib = readtable([cf,'raw_data\CT_across_GXX_mice.xlsx']);
+dec_data = readtable([cf,'processed_and_organized_data\sup7fg_dec_fiber_table.xlsx']);
+cue_data = load([cf,'processed_and_organized_data\sup7fg_cue.mat']); %manually renamed from TEMP_MTV.mat
+mouse_names = ["G17","G19","G21","G22","G23","G24"];
+
+cue1_learning_peaks = cue_data.stats_data.value(1,cue_data.stats_data.type(1,:)==1)';
+decel_max = dec_data.dec_max;
+decel_max(isnan(decel_max))=0; % make the nans go to 0
+cue1_learning_dips = cue_data.stats_data.value(2,cue_data.stats_data.type(2,:)==-1)';
+decel_min = dec_data.dec_min;
+decel_min(isnan(decel_min))=0; % make the nans go to 0
+
+% filter for the right mice and right fibers
+fib6 = fib(ismember(fib.mouse_name,mouse_names) & fib.significance==1,:);
+
+% new table
+new_table = table(dec_data.mouse_name,dec_data.ROI_original,'VariableNames',{'mouse_name','ROI_original'});
+new_table.dec_min = decel_min;
+new_table.dec_max = decel_max;
+new_table.cue1_peaks = zeros(size(decel_max));
+new_table.cue1_dips = zeros(size(decel_max));
+for m = 1:numel(mouse_names)
+    % max
+   new_table.cue1_peaks(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       cue_data.stats_data.value(1,ismember(fib6.mouse_name,mouse_names{m}));
+   new_table.cue1_peaks_sig(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       cue_data.stats_data.type(1,ismember(fib6.mouse_name,mouse_names{m}))==1;
+    % min
+   new_table.cue1_dips(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       cue_data.stats_data.value(2,ismember(fib6.mouse_name,mouse_names{m}));
+   new_table.cue1_dips_sig(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       cue_data.stats_data.type(2,ismember(fib6.mouse_name,mouse_names{m}))==-1;
+end
+max_cue_decel_sig = [new_table.cue1_peaks_sig == 1 new_table.dec_max>0];
+min_cue_decel_sig = [new_table.cue1_dips_sig == 1 new_table.dec_min<0];
+
+fig = figure();
+% max
+subplot(2,1,1)
+hold on
+max_vals = [new_table.dec_max(new_table.cue1_peaks_sig==1) new_table.cue1_peaks(new_table.cue1_peaks_sig==1)];
+histogram(max_vals(:,1),'BinEdges',[0:0.001:0.025],'FaceColor',[0 0 0])
+histogram(max_vals(:,2),'BinEdges',[0:0.001:0.025],'FaceColor',[1 0 0],'FaceAlpha',.5)
+legend({'ITI deceleration max','cue1 early peak significant increases w/learning'})
+xlabel('\DeltaF/F')
+ylabel('# fibers')
+xline (mean(max_vals(:,2)),'r','HandleVisibility','off');
+xline (mean(max_vals(:,1)), 'k','HandleVisibility','off');
+% ranksum on the means
+[p,h,stats] = ranksum(max_vals(:,2),max_vals(:,1));
+title(['ranksum: p = ' num2str(p)])
+
+% min
+subplot(2,1,2)
+hold on
+min_vals = [new_table.dec_min(new_table.cue1_dips_sig==1) new_table.cue1_dips(new_table.cue1_dips_sig==1)];
+histogram(min_vals(:,1),'BinEdges',[-0.014:0.001:0],'FaceColor',[0 0 0])
+histogram(min_vals(:,2),'BinEdges',[-0.014:0.001:0],'FaceColor',[1 0 0],'FaceAlpha',.5)
+legend({'ITI deceleration min','cue1 dip significant increases w/learning'},'Location','Northwest')
+xlabel('\DeltaF/F')
+ylabel('# fibers')
+xline (mean(min_vals(:,2)),'r','HandleVisibility','off');
+xline (mean(min_vals(:,1)), 'k','HandleVisibility','off');
+% ranksum on the means
+[p,h,stats] = ranksum(min_vals(:,2),min_vals(:,1))
+title(['ranksum: p = ' num2str(p)])
+
+saveas(fig,[cf,'sup_fig7F.png']);
+delete(fig);
+
+
+%^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%
+%--------------------------------------------------------------------------%
+%vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv%
+
+
+%% sup figure 7G
+close all;clear;clc;
+cf = [pwd,'\'];
+fib = readtable([cf,'raw_data\CT_across_GXX_mice.xlsx']);
+dec_data = readtable([cf,'processed_and_organized_data\sup7fg_dec_fiber_table.xlsx']);
+rew_data = load([cf,'processed_and_organized_data\sup7fg_rew.mat']); %manually renamed from TEMP_MTV.mat
+mouse_names = ["G17","G19","G21","G22","G23","G24"];
+
+decel_max = dec_data.dec_max;
+decel_max(isnan(decel_max))=0; % make the nans go to 0
+decel_min = dec_data.dec_min;
+decel_min(isnan(decel_min))=0; % make the nans go to 0
+
+% verification: let's just check the histograms: max
+% significant increases (late-early learning) in cue1 early peaks vs ITI decel max
+rew_learning_peaks = rew_data.stats_data.value(1,rew_data.stats_data.type(1,:)==-1)'; % PEAKS DECREASE
+rew_learning_dips = rew_data.stats_data.value(2,rew_data.stats_data.type(2,:)==1)'; % DIPS INCREASE (closer to zero)
+
+
+fib6 = fib(ismember(fib.mouse_name,mouse_names) & fib.significance==1,:);
+% new table
+new_table = table(dec_data.mouse_name,dec_data.ROI_original,'VariableNames',{'mouse_name','ROI_original'});
+new_table.dec_min = decel_min;
+new_table.dec_max = decel_max;
+new_table.rew_peaks = zeros(size(decel_max));
+new_table.rew_dips = zeros(size(decel_max));
+
+for m = 1:numel(mouse_names)
+    % max
+   new_table.rew_peaks(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       rew_data.stats_data.value(1,ismember(fib6.mouse_name,mouse_names{m}));
+   new_table.rew_peaks_sig(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       rew_data.stats_data.type(1,ismember(fib6.mouse_name,mouse_names{m}))==-1;
+    % min
+   new_table.rew_dips(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       rew_data.stats_data.value(2,ismember(fib6.mouse_name,mouse_names{m}));
+   new_table.rew_dips_sig(ismember(new_table.mouse_name,mouse_names{m})) = ...
+       rew_data.stats_data.type(2,ismember(fib6.mouse_name,mouse_names{m}))==1;
+end
+
+fig = figure();
+% max
+subplot(2,1,1)
+hold on
+max_vals = [new_table.dec_max(new_table.rew_peaks_sig==1) new_table.rew_peaks(new_table.rew_peaks_sig==1)];
+histogram(-max_vals(:,1),'BinEdges',[-0.021:0.001:0],'FaceColor',[0 0 0]) % flip the decel sign
+histogram(max_vals(:,2),'BinEdges',[-0.021:0.001:0],'FaceColor',[1 0 0],'FaceAlpha',.5)
+xlabel('\DeltaF/F')
+ylabel('# fibers')
+xline (-mean(max_vals(:,1)), 'k','HandleVisibility','off');
+xline (mean(max_vals(:,2)),'r','HandleVisibility','off');
+legend({'(-)ITI deceleration max','rew early peak significant decreases w/learning'},'Location','northwest')
+% ranksum on the means
+[p,h,stats] = ranksum(max_vals(:,2),-max_vals(:,1));
+title(['ranksum: p = ' num2str(p)])
+
+% min
+subplot(2,1,2)
+hold on
+min_vals = [new_table.dec_min(new_table.rew_dips_sig==1) new_table.rew_dips(new_table.rew_dips_sig==1)];
+histogram(-min_vals(:,1),'BinEdges',[0:0.001:0.021],'FaceColor',[0 0 0])
+histogram(min_vals(:,2),'BinEdges',[0:0.001:0.021],'FaceColor',[1 0 0],'FaceAlpha',.5)
+xlabel('\DeltaF/F')
+ylabel('# fibers')
+xline (-mean(min_vals(:,1)), 'k','HandleVisibility','off');
+xline (mean(min_vals(:,2)),'r','HandleVisibility','off');
+legend({'(-)ITI deceleration min','rew dip significant decreases w/learning'},'Location','northeast')
+% ranksum on the means
+[p,h,stats] = ranksum(min_vals(:,2),-min_vals(:,1));
+title(['ranksum: p = ' num2str(p)])
+
+saveas(fig,[cf,'sup_fig7G.png']);
+delete(fig);
 
 
 %^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^%

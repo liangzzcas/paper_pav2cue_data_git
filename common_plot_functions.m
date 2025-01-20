@@ -203,14 +203,18 @@
                 tmp_valid = (tmp>input_window(1,1) & tmp<input_window(1,2)) | (tmp>input_window(3,1) & tmp<input_window(3,2));
                 tmp(~tmp_valid) = nan;
                 h1 = histogram(axs(1),tmp,BinWidth=binwidth,FaceColor=plot_colors(1,:),Normalization="count");
-                mid1 = median(data_to_plot(1,:,2),"all","omitmissing");
-                mid3 = median(data_to_plot(3,:,2),"all","omitmissing");
+                tmp1 = data_to_plot(1,:,2);
+                tmp1=tmp1(tmp1>input_window(1,1) & tmp1<input_window(1,2));
+                mid1 = mean(tmp1,"all","omitmissing");
+                tmp1 = data_to_plot(3,:,2);
+                tmp1=tmp1(tmp1>input_window(3,1) & tmp1<input_window(3,2));
+                mid3 = mean(tmp1,"all","omitmissing");
                 
                 tmp = data_to_plot(2,:,2);
                 tmp_valid = tmp>input_window(2,1) & tmp<input_window(2,2);
                 tmp(~tmp_valid) = nan;
                 h2 = histogram(axs(2),tmp,BinWidth=binwidth,FaceColor=plot_colors(2,:),Normalization="count");
-                mid2 = median(data_to_plot(2,:,2),"all","omitmissing");
+                mid2 = mean(tmp,"all","omitmissing");
             
                 if ~isempty(input_window)
                     tmp = xline(axs(1),input_window(1,:),Color=plot_colors(3,:),LineStyle='-',Linewidth=1.8);
@@ -391,6 +395,105 @@
             end
         end
         
+        function [this_value_out,this_ranksum_p_out] = phase_diff_data(cf,plot_tag,plot_phases,mouse_names,varargin)
+            % plot_tag = ["tas_normal","tas_rewmerged","tas_itilick"];
+            % mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
+            % phase_names = {["cue1late","cue1early"],["cue2late","cue2early"],["cue1LEDomi","cue1late"],...
+            %     ["rew1late","rew1early"],["ITIlate","ITIearly"]};
+            ranksum_alpha = 0.01;
+            ip = inputParser;
+            ip.addParameter("ranksum_alpha",0.01)
+            ip.parse(varargin{:});
+            for j=fields(ip.Results)'
+                eval([j{1} '=ip.Results.' j{1} ';']);
+            end            
+            
+            ct_table = readtable([cf,'raw_data\CT_across_GXX_mice.xlsx']);
+            switch plot_tag
+                case "tas_normal"
+                    this_tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump.mat']);
+                case "tas_rewmerged"
+                    this_tas = load([cf,'processed_and_organized_data\tri_avg_single_filtered_rebase_rew_consump_rew_merged.mat']);
+                case "tas_itilick"
+                    this_tas = load([cf,'processed_and_organized_data\ITI_licking_tri_avg_single_filtered.mat']);
+                    if ~contains(string(varargin(1:2:end)),"ranksum_alpha")
+                        ranksum_alpha = 0.025;
+                    end
+            end
+            
+            
+            comp_text = ["pk","dp","re"];
+            
+            across_data = struct; % store diff and sig for both cue in this struct
+            for p_i = 1:length(plot_phases)
+                phase_name = plot_phases{p_i};
+                phase_name_tag = strjoin(phase_name,"_");
+                phase_name_text = strjoin(phase_name,"-");
+                mouse_name_tag = strjoin(mouse_names,"_");
+            
+                this_table = [];
+                mu_1 = [];
+                single_1 = {};
+                sig_1 = [];
+                mu_2 = [];
+                single_2 = {};
+                sig_2 = [];
+            
+                for m = mouse_names
+                    this_table = cat(1,this_table,ct_table(ct_table{:,"mouse_name"}==m,:));
+            
+                    tmp = getfield(this_tas,phase_name(1),m,"mu_location_value");
+                    mu_1 = cat(2,mu_1,tmp(:,:,1));
+                    single_1 = cat(2,single_1,num2cell(getfield(this_tas,phase_name(1),m,"single_values"),3));
+                    sig_1 = cat(2,sig_1,getfield(this_tas,phase_name(1),m,"mu_location_value_significance"));
+            
+                    tmp = getfield(this_tas,phase_name(2),m,"mu_location_value");
+                    mu_2 = cat(2,mu_2,tmp(:,:,1));
+                    single_2 = cat(2,single_2,num2cell(getfield(this_tas,phase_name(2),m,"single_values"),3));
+                    sig_2 = cat(2,sig_2,getfield(this_tas,phase_name(2),m,"mu_location_value_significance"));
+                end
+                in_striatum_bit = logical(this_table{:,"significance"});
+                in_striatum_rois = find(in_striatum_bit);
+            
+            
+                % get diff
+                tmp = diff_phase_ranksum(mu_1,sig_1,single_1,mu_2,sig_2,single_2,in_striatum_bit);
+                across_data.(mouse_name_tag).(phase_name_tag) = tmp;
+            
+                stats_data.value = nan([3,sum(in_striatum_bit)]);
+                stats_data.type = nan([3,sum(in_striatum_bit)]);
+            
+                this_value_1 = across_data.(mouse_name_tag).(phase_name_tag).diff_mu';
+                this_ranksum_p_1 = across_data.(mouse_name_tag).(phase_name_tag).ranksum_p';
+                this_value_out = this_value_1(:,in_striatum_bit);
+                this_ranksum_p_out = this_ranksum_p_1(:,in_striatum_bit);
+
+                for comp_i = 1:3            
+                    tmp = this_value_1(comp_i,in_striatum_bit);
+                    stats_data.value(comp_i,:) = tmp;
+                    stats_data.type(comp_i,tmp>0) = 1;
+                    stats_data.type(comp_i,tmp<0) = -1;
+                    tmp = this_ranksum_p_1(comp_i,in_striatum_bit)>ranksum_alpha;
+                    stats_data.type(comp_i,tmp) = 0;
+                end
+            end
+            
+            % helper function
+            function diff_struct = diff_phase_ranksum(mu1,sig1,single1,mu2,sig2,single2,in_striatum_bit)
+                mu1(~sig1) = nan; mu2(~sig2) = nan;
+                single1(~sig1) = cellfun(@(x) nan(size(x)),single1(~sig1),UniformOutput=false);
+                single2(~sig2) = cellfun(@(x) nan(size(x)),single2(~sig2),UniformOutput=false);
+                
+                this_value = common_functions.nan_minus(mu1,mu2);
+                this_ranksum_p = common_functions.nan_ranksum_cell(single1,single2);
+                diff_struct.included_bit = in_striatum_bit;
+                diff_struct.diff_mu = this_value';
+                diff_struct.ranksum_p = this_ranksum_p';
+            end
+
+        end
+        
+
         function phase_diff_circlemap(cf,plot_tag,plot_phases,mouse_names,save_name,varargin)
             % plot_tag = ["tas_normal","tas_rewmerged","tas_itilick"];
             % mouse_names = ["G12","G15","G17","G19","G21","G22","G23","G24"];
@@ -424,7 +527,6 @@
             
             comp_text = ["pk","dp","re"];
             
-            %%
             across_data = struct; % store diff and sig for both cue in this struct
             for p_i = 1:length(plot_phases)
                 phase_name = plot_phases{p_i};
